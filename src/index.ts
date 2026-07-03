@@ -11,7 +11,21 @@ const redisClient = createClient();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-app.get("/", (req, res) => {});
+app.get("/", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head><title>URL Shortener</title></head>
+      <body>
+        <h1>Shorten a URL</h1>
+        <form action="/shorten" method="POST">
+          <input type="url" name="url" placeholder="https://example.com" required />
+          <button type="submit">Shorten</button>
+        </form>
+      </body>
+    </html>
+  `);
+});
 
 app.post(
   "/shorten",
@@ -38,7 +52,9 @@ app.post(
   async (req: Request, res: Response) => {
     let errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      let body = "";
+      errors.array().forEach((e) => (body += e.msg));
+      return res.status(400).send(body);
     }
     let originalUrl = req.body.url;
 
@@ -66,9 +82,12 @@ app.post(
     // 4. respond with HTML
     res.send(`
     <p>Your short URL: 
-      <a href="http://localhost:8000/${urlId}">
+      <a target="_black" href="http://localhost:8000/${urlId}">
         http://localhost:8000/${urlId}
       </a>
+    </p>
+    <p>
+      <a href="/">Shorten another link</a>
     </p>
   `);
   },
