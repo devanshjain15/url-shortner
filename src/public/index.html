@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>URL Shortener</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --blue: #2563eb;
+        --blue-dark: #1d4ed8;
+        --blue-light: #eff6ff;
+        --text: #0f172a;
+        --muted: #64748b;
+        --border: #e2e8f0;
+        --error: #dc2626;
+        --white: #ffffff;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--white);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 560px;
+      }
+
+      .eyebrow {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--blue);
+        margin-bottom: 1rem;
+      }
+
+      h1 {
+        font-size: clamp(2rem, 5vw, 3rem);
+        font-weight: 800;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+        color: var(--text);
+        margin-bottom: 0.5rem;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        font-size: 1rem;
+        margin-bottom: 2.5rem;
+        line-height: 1.5;
+      }
+
+      .form-row {
+        display: flex;
+        gap: 0;
+        border: 1.5px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        transition: border-color 0.15s;
+        background: var(--white);
+      }
+
+      .form-row:focus-within {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      }
+
+      .form-row input {
+        flex: 1;
+        border: none;
+        outline: none;
+        padding: 0.875rem 1.25rem;
+        font-size: 0.975rem;
+        color: var(--text);
+        background: transparent;
+      }
+
+      .form-row input::placeholder {
+        color: var(--muted);
+      }
+
+      .form-row button {
+        background: var(--blue);
+        border: none;
+        cursor: pointer;
+        padding: 0 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s;
+        min-width: 52px;
+      }
+
+      .form-row button:hover {
+        background: var(--blue-dark);
+      }
+
+      .form-row button svg {
+        width: 20px;
+        height: 20px;
+        stroke: white;
+        fill: none;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .error-msg {
+        margin-top: 0.75rem;
+        font-size: 0.875rem;
+        color: var(--error);
+        display: none;
+      }
+
+      .error-msg.visible {
+        display: block;
+      }
+
+      .result {
+        margin-top: 1.5rem;
+        background: var(--blue-light);
+        border: 1.5px solid #bfdbfe;
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        display: none;
+      }
+
+      .result.visible {
+        display: block;
+      }
+
+      .result-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue);
+        margin-bottom: 0.5rem;
+      }
+
+      .result-url {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text);
+        word-break: break-all;
+      }
+
+      .result-url a {
+        color: var(--blue);
+        text-decoration: none;
+      }
+
+      .result-url a:hover {
+        text-decoration: underline;
+      }
+
+      .result-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: 1rem;
+        font-size: 0.875rem;
+      }
+
+      .result-actions a {
+        color: var(--muted);
+        text-decoration: none;
+      }
+
+      .result-actions a:hover {
+        color: var(--blue);
+      }
+
+      .footer {
+        margin-top: 3rem;
+        font-size: 0.8rem;
+        color: var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <p class="eyebrow">URL Shortener</p>
+      <h1>Shorten your URLs</h1>
+      <p class="subtitle">Paste a long link, get a short one back.</p>
+
+      <form id="shorten-form" action="/shorten" method="POST">
+        <div class="form-row">
+          <input
+            type="url"
+            name="url"
+            id="url-input"
+            placeholder="https://example.com/very/long/url"
+            required
+            autocomplete="off"
+          />
+          <button type="submit" aria-label="Shorten">
+            <svg viewBox="0 0 24 24">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </button>
+        </div>
+        <p class="error-msg" id="error-msg"></p>
+      </form>
+
+      <div class="result" id="result">
+        <p class="result-label">Your short URL</p>
+        <p class="result-url">
+          <a id="result-link" href="#" target="_blank"></a>
+        </p>
+        <div class="result-actions">
+          <a id="stats-link" href="#">View stats</a>
+          <a href="/" id="shorten-another">Shorten another</a>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById("shorten-form");
+      const errorMsg = document.getElementById("error-msg");
+      const result = document.getElementById("result");
+      const resultLink = document.getElementById("result-link");
+      const statsLink = document.getElementById("stats-link");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        errorMsg.classList.remove("visible");
+        result.classList.remove("visible");
+
+        const url = document.getElementById("url-input").value;
+        const formData = new FormData();
+        formData.append("url", url);
+
+        try {
+          const res = await fetch("/shorten", {
+            method: "POST",
+            body: new URLSearchParams({ url }),
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            errorMsg.textContent =
+              data.errors?.[0]?.msg || "Something went wrong.";
+            errorMsg.classList.add("visible");
+            return;
+          }
+
+          const shortUrl = `${window.location.origin}/${data.urlId}`;
+          resultLink.href = shortUrl;
+          resultLink.textContent = shortUrl;
+          statsLink.href = `/stats/${data.urlId}/view`;
+          result.classList.add("visible");
+        } catch (err) {
+          errorMsg.textContent = "Network error. Please try again.";
+          errorMsg.classList.add("visible");
+        }
+      });
+    </script>
+  </body>
+</html>

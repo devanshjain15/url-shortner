@@ -1,6 +1,9 @@
 import express, { Request, Response, NextFunction } from "express";
 import { createClient } from "redis";
 import { body, validationResult } from "express-validator";
+import { fileURLToPath } from "url";
+import path from "path";
+import createError from "http-errors";
 
 import { generateShortCode } from "./utils";
 import pool from "./db/conn";
@@ -8,23 +11,16 @@ import pool from "./db/conn";
 const app = express();
 const redisClient = createClient();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PUBLIC_DIR = path.join(__dirname, "public");
+app.use(express.static(PUBLIC_DIR));
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head><title>URL Shortener</title></head>
-      <body>
-        <h1>Shorten a URL</h1>
-        <form action="/shorten" method="POST">
-          <input type="url" name="url" placeholder="https://example.com" required />
-          <button type="submit">Shorten</button>
-        </form>
-      </body>
-    </html>
-  `);
+  res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
 
 app.post(
@@ -80,26 +76,15 @@ app.post(
     }
 
     // 4. respond with HTML
-    res.send(`
-    <p>Your short URL: 
-      <a target="_black" href="http://localhost:8000/${urlId}">
-        http://localhost:8000/${urlId}
-      </a>
-      </p>
-      <p>
-      <a href="/stats/${urlId}/view">View stats</a>
-      <a href="/">Shorten another link</a>
-    </p>
-  `);
+    res.status(200).json({ urlId });
   },
 );
 
-app.get("/:urlId", async (req: Request, res: Response) => {
+app.get("/:urlId", async (req: Request, res: Response, next: NextFunction) => {
   let urlId = req.params.urlId;
 
-  if (!urlId) {
-    return res.status(400).send("Invalid URL identifier");
-  }
+  if (!urlId) return next(createError(404, "Invalid URL identifier"));
+
   urlId = urlId as string;
 
   console.log("Looking into cache");
@@ -114,7 +99,7 @@ app.get("/:urlId", async (req: Request, res: Response) => {
       );
       if (!result.rowCount) {
         // invalid url
-        return res.status(400).send("Invalid URL");
+        return next(createError(404, "Invalid URL identifier"));
       } else {
         // extract the stored original_url field
         originalUrl = result.rows[0].original_url as string;
@@ -142,94 +127,64 @@ app.get("/:urlId", async (req: Request, res: Response) => {
       [urlId],
     )
     .catch((error) => console.error("Click tracking failed:", error));
-  return res.redirect(301, originalUrl as string);
+  return res.redirect(302, originalUrl as string);
 });
 
-app.get("/stats/:urlId", async (req: Request, res: Response) => {
-  const urlId = req.params.urlId;
-  if (!urlId) return res.status(400).send("Invalid URL identifier");
+app.get(
+  "/stats/:urlId",
+  async (req: Request, res: Response, next: NextFunction) => {
+    const urlId = req.params.urlId;
+    if (!urlId) return next(createError(404, "Invalid URL identifier"));
 
-  try {
-    // metadata about shorten url
-    // distinct clicks
-    // chart data clicks / day
-    const [metadata, uniqueClicksData, perDayClicksData] = await Promise.all([
-      pool.query(
-        "SELECT original_url, total_visits, created_at FROM urls WHERE url_id = $1;",
-        [urlId],
-      ),
-      pool.query(
-        "SELECT COUNT(DISTINCT ip_address) FROM CLICKS WHERE url_id = $1;",
-        [urlId],
-      ),
-      pool.query(
-        "SELECT DATE(visited_at) as date, COUNT(*) as clicks FROM CLICKS WHERE url_id = $1 GROUP BY DATE(visited_at) order by date asc;",
-        [urlId],
-      ),
-    ]);
+    try {
+      // metadata about shorten url
+      // distinct clicks
+      // chart data clicks / day
+      const [metadata, uniqueClicksData, perDayClicksData] = await Promise.all([
+        pool.query(
+          "SELECT original_url, total_visits, created_at FROM urls WHERE url_id = $1;",
+          [urlId],
+        ),
+        pool.query(
+          "SELECT COUNT(DISTINCT ip_address) FROM CLICKS WHERE url_id = $1;",
+          [urlId],
+        ),
+        pool.query(
+          "SELECT DATE(visited_at) as date, COUNT(*) as clicks FROM CLICKS WHERE url_id = $1 GROUP BY DATE(visited_at) order by date asc;",
+          [urlId],
+        ),
+      ]);
 
-    return res.status(200).json({
-      metadata: metadata.rows[0],
-      uniqueClicksData: uniqueClicksData.rows[0],
-      perDayClicksData: perDayClicksData.rows,
-    });
-  } catch (error) {
-    throw error;
-  }
-});
+      return res.status(200).json({
+        metadata: metadata.rows[0],
+        uniqueClicksData: uniqueClicksData.rows[0],
+        perDayClicksData: perDayClicksData.rows,
+      });
+    } catch (error) {
+      throw error;
+    }
+  },
+);
 
 app.get("/stats/:urlId/view", (req, res) => {
   const urlId = req.params.urlId;
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Stats for ${urlId}</title>
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-      </head>
-      <body>
-        <h1>Stats for ${urlId}</h1>
-        <div id="metadata"></div>
-        <canvas id="clicksChart"></canvas>
-        <script>
-          async function loadStats() {
-            const res = await fetch('/stats/${urlId}');
-            const data = await res.json();
-            
-            // render metadata
-            document.getElementById('metadata').innerHTML = \`
-              <p>Original URL: <a href="\${data.metadata.original_url}">\${data.metadata.original_url}</a></p>
-              <p>Total visits: \${data.metadata.total_visits}</p>
-              <p>Unique visitors: \${data.uniqueClicksData.count}</p>
-              <p>Created: \${new Date(data.metadata.created_at).toLocaleDateString()}</p>
-            \`;
-
-            // render chart
-            const ctx = document.getElementById('clicksChart').getContext('2d');
-            new Chart(ctx, {
-              type: 'bar',
-              data: {
-                labels: data.perDayClicksData.map(d => d.date),
-                datasets: [{
-                  label: 'Clicks per day',
-                  data: data.perDayClicksData.map(d => d.clicks),
-                }]
-              }
-            });
-          }
-          loadStats();
-        </script>
-      </body>
-    </html>
-  `);
+  res.sendFile(path.join(PUBLIC_DIR, "stats.html"));
 });
 
-app.use((req: Request, res: Response, next: NextFunction) => {
-  //   add some static page no such url and go to home page link
-  res.status(404).json({
-    status: "fail",
-    message: `Cannot find ${req.originalUrl} on this server!`,
-  });
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error(err.stack);
+  const status = err.status || 500;
+  const message = err.message || "Internal Server Error";
+
+  // if the request expects JSON, return JSON
+  if (req.accepts("json") && !req.accepts("html")) {
+    return res.status(status).json({ success: false, status, message });
+  }
+
+  // otherwise redirect to error page
+  res.redirect(
+    `/error.html?status=${status}&message=${encodeURIComponent(message)}`,
+  );
 });
 
 async function main() {

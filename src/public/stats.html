@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stats</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --blue: #2563eb;
+        --blue-dark: #1d4ed8;
+        --blue-light: #eff6ff;
+        --text: #0f172a;
+        --muted: #64748b;
+        --border: #e2e8f0;
+        --white: #ffffff;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f8fafc;
+        color: var(--text);
+        min-height: 100vh;
+        padding: 2rem;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 720px;
+        margin: 0 auto;
+      }
+
+      .back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.875rem;
+        color: var(--muted);
+        text-decoration: none;
+        margin-bottom: 2rem;
+      }
+
+      .back:hover {
+        color: var(--blue);
+      }
+
+      .back svg {
+        width: 14px;
+        height: 14px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .eyebrow {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--blue);
+        margin-bottom: 0.5rem;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.4rem;
+        word-break: break-all;
+      }
+
+      .original-url {
+        font-size: 0.9rem;
+        color: var(--muted);
+        margin-bottom: 2rem;
+        word-break: break-all;
+      }
+
+      .original-url a {
+        color: var(--blue);
+        text-decoration: none;
+      }
+
+      .original-url a:hover {
+        text-decoration: underline;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+
+      .stat-card {
+        background: var(--white);
+        border: 1.5px solid var(--border);
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+      }
+
+      .stat-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.5rem;
+      }
+
+      .stat-value {
+        font-size: 2rem;
+        font-weight: 800;
+        color: var(--text);
+        letter-spacing: -0.03em;
+      }
+
+      .chart-card {
+        background: var(--white);
+        border: 1.5px solid var(--border);
+        border-radius: 10px;
+        padding: 1.5rem;
+      }
+
+      .chart-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 1.25rem;
+      }
+
+      .loading {
+        text-align: center;
+        color: var(--muted);
+        padding: 3rem 0;
+        font-size: 0.9rem;
+      }
+
+      .error {
+        text-align: center;
+        color: #dc2626;
+        padding: 3rem 0;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <a class="back" href="/">
+        <svg viewBox="0 0 24 24">
+          <line x1="19" y1="12" x2="5" y2="12" />
+          <polyline points="12 19 5 12 12 5" />
+        </svg>
+        Back
+      </a>
+
+      <div id="content">
+        <div class="loading">Loading stats...</div>
+      </div>
+    </div>
+
+    <script>
+      async function loadStats() {
+        const urlId = window.location.pathname.split("/")[2];
+        const content = document.getElementById("content");
+
+        try {
+          const res = await fetch(`/stats/${urlId}`);
+          if (!res.ok) throw new Error("Not found");
+          const data = await res.json();
+
+          const { metadata, uniqueClicksData, perDayClicksData } = data;
+          const createdDate = new Date(metadata.created_at).toLocaleDateString(
+            "en-US",
+            {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            },
+          );
+
+          content.innerHTML = `
+          <p class="eyebrow">Link Stats</p>
+          <h1><a target="_black" href="http://localhost:8000/${urlId}">http://localhost:8000/${urlId}</a></h1>
+          <p class="original-url">
+            → <a href="${metadata.original_url}" target="_blank">${metadata.original_url}</a>
+            &nbsp;·&nbsp; Created ${createdDate}
+          </p>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <p class="stat-label">Total clicks</p>
+              <p class="stat-value">${metadata.total_visits}</p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Unique visitors</p>
+              <p class="stat-value">${uniqueClicksData.count}</p>
+            </div>
+            <div class="stat-card">
+              <p class="stat-label">Active days</p>
+              <p class="stat-value">${perDayClicksData.length}</p>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <p class="chart-title">Clicks over time</p>
+            <canvas id="clicksChart" height="120"></canvas>
+          </div>
+        `;
+
+          if (perDayClicksData.length > 0) {
+            const ctx = document.getElementById("clicksChart").getContext("2d");
+            new Chart(ctx, {
+              type: "bar",
+              data: {
+                labels: perDayClicksData.map((d) =>
+                  new Date(d.date).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  }),
+                ),
+                datasets: [
+                  {
+                    label: "Clicks",
+                    data: perDayClicksData.map((d) => parseInt(d.clicks)),
+                    backgroundColor: "#2563eb",
+                    borderRadius: 4,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 },
+                    grid: { color: "#f1f5f9" },
+                  },
+                  x: { grid: { display: false } },
+                },
+              },
+            });
+          } else {
+            document.getElementById("clicksChart").parentElement.innerHTML +=
+              '<p style="color:#94a3b8;font-size:0.875rem;margin-top:1rem;">No clicks recorded yet.</p>';
+            document.getElementById("clicksChart").remove();
+          }
+        } catch (err) {
+          content.innerHTML =
+            '<p class="error">Could not load stats for this link.</p>';
+        }
+      }
+
+      loadStats();
+    </script>
+  </body>
+</html>
