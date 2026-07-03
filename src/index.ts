@@ -144,6 +144,39 @@ app.get("/:urlId", async (req: Request, res: Response) => {
   return res.redirect(301, originalUrl as string);
 });
 
+app.get("/stats/:urlId", async (req: Request, res: Response) => {
+  const urlId = req.params.urlId;
+  if (!urlId) return res.status(400).send("Invalid URL identifier");
+
+  try {
+    // metadata about shorten url
+    // distinct clicks
+    // chart data clicks / day
+    const [metadata, uniqueClicksData, perDayClicksData] = await Promise.all([
+      pool.query(
+        "SELECT original_url, total_visits, created_at FROM urls WHERE url_id = $1;",
+        [urlId],
+      ),
+      pool.query(
+        "SELECT COUNT(DISTINCT ip_address) FROM CLICKS WHERE url_id = $1;",
+        [urlId],
+      ),
+      pool.query(
+        "SELECT DATE(visited_at) as date, COUNT(*) as clicks FROM CLICKS WHERE url_id = $1 GROUP BY DATE(visited_at) order by date asc;",
+        [urlId],
+      ),
+    ]);
+
+    return res.status(200).json({
+      metadata: metadata.rows[0],
+      uniqueClicksData: uniqueClicksData.rows[0],
+      perDayClicksData: perDayClicksData.rows,
+    });
+  } catch (error) {
+    throw error;
+  }
+});
+
 app.use((req: Request, res: Response, next: NextFunction) => {
   //   add some static page no such url and go to home page link
   res.status(404).json({
