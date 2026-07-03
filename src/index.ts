@@ -85,8 +85,9 @@ app.post(
       <a target="_black" href="http://localhost:8000/${urlId}">
         http://localhost:8000/${urlId}
       </a>
-    </p>
-    <p>
+      </p>
+      <p>
+      <a href="/stats/${urlId}/view">View stats</a>
       <a href="/">Shorten another link</a>
     </p>
   `);
@@ -175,6 +176,52 @@ app.get("/stats/:urlId", async (req: Request, res: Response) => {
   } catch (error) {
     throw error;
   }
+});
+
+app.get("/stats/:urlId/view", (req, res) => {
+  const urlId = req.params.urlId;
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Stats for ${urlId}</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+      </head>
+      <body>
+        <h1>Stats for ${urlId}</h1>
+        <div id="metadata"></div>
+        <canvas id="clicksChart"></canvas>
+        <script>
+          async function loadStats() {
+            const res = await fetch('/stats/${urlId}');
+            const data = await res.json();
+            
+            // render metadata
+            document.getElementById('metadata').innerHTML = \`
+              <p>Original URL: <a href="\${data.metadata.original_url}">\${data.metadata.original_url}</a></p>
+              <p>Total visits: \${data.metadata.total_visits}</p>
+              <p>Unique visitors: \${data.uniqueClicksData.count}</p>
+              <p>Created: \${new Date(data.metadata.created_at).toLocaleDateString()}</p>
+            \`;
+
+            // render chart
+            const ctx = document.getElementById('clicksChart').getContext('2d');
+            new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: data.perDayClicksData.map(d => d.date),
+                datasets: [{
+                  label: 'Clicks per day',
+                  data: data.perDayClicksData.map(d => d.clicks),
+                }]
+              }
+            });
+          }
+          loadStats();
+        </script>
+      </body>
+    </html>
+  `);
 });
 
 app.use((req: Request, res: Response, next: NextFunction) => {
