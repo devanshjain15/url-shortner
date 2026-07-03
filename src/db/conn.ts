@@ -5,7 +5,7 @@ const pool = new Pool({
   port: 5432,
   database: "urlshortener",
   user: "postgres",
-  password: "1234",
+  password: "password",
 });
 
 export default pool;

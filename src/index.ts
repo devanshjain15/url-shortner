@@ -74,7 +74,56 @@ app.post(
   },
 );
 
-app.get("/:urlId", async (req: Request, res: Response) => {});
+app.get("/:urlId", async (req: Request, res: Response) => {
+  let urlId = req.params.urlId;
+
+  if (!urlId) {
+    return res.status(400).send("Invalid URL identifier");
+  }
+  urlId = urlId as string;
+
+  console.log("Looking into cache");
+  let originalUrl: string | null = await redisClient.get(urlId);
+
+  if (!originalUrl) {
+    console.log("cache miss :(");
+    try {
+      const result = await pool.query(
+        `SELECT original_url FROM URLS WHERE url_id = $1;`,
+        [urlId],
+      );
+      if (!result.rowCount) {
+        // invalid url
+        return res.status(400).send("Invalid URL");
+      } else {
+        // extract the stored original_url field
+        originalUrl = result.rows[0].original_url as string;
+        await redisClient.set(urlId, originalUrl, {
+          expiration: { type: "EX", value: 60 }, // low value TTL because of testing in development
+        });
+      }
+    } catch (error) {
+      throw error;
+    }
+  } else {
+    // cache hit
+    console.log("cache hit :)");
+  }
+  // fire analytics
+  pool
+    .query("INSERT INTO CLICKS (url_id, ip_address) VALUES ($1, $2);", [
+      urlId,
+      req.ip,
+    ])
+    .catch((error) => console.error("Click tracking failed:", error));
+  pool
+    .query(
+      "UPDATE URLS SET total_visits = total_visits + 1 WHERE url_id = $1;",
+      [urlId],
+    )
+    .catch((error) => console.error("Click tracking failed:", error));
+  return res.redirect(301, originalUrl as string);
+});
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   //   add some static page no such url and go to home page link
@@ -84,6 +133,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   });
 });
 
-app.listen(8000, () => {
-  console.log(`Server is up at http://localhost:8000`);
-});
+async function main() {
+  await redisClient.connect();
+  app.listen(8000, () => {
+    console.log(`Server is up at http://localhost:8000`);
+  });
+}
+
+main();
